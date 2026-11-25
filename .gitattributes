@@ -1,0 +1,5 @@
+# Los scripts que corren dentro de las VMs Linux necesitan finales de línea LF
+*.sh        text eol=lf
+Vagrantfile text eol=lf
+*.yml       text eol=lf
+*.ps1       text eol=crlf

@@ -1,0 +1,14 @@
+# Estado local de Vagrant (incluye claves SSH privadas de las VMs)
+.vagrant/
+*.log
+
+# Secretos
+.env
+*.pem
+*.key
+
+# Sistema / editor
+Thumbs.db
+.DS_Store
+.vscode/
+initial-prompt.md

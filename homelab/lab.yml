@@ -1,0 +1,86 @@
+# Fuente única de verdad del homelab.
+# El Vagrantfile lee este archivo: para agregar/cambiar máquinas o redes, se edita acá.
+
+name: cyberlab
+domain: lab.local
+
+boxes:
+  linux: bento/ubuntu-24.04
+  # 0.2 → windows-server / windows-client
+  # 0.4 → kali: kalilinux/rolling
+
+networks:
+  corp:     { cidr: 10.10.10.0/24, gateway: 10.10.10.1, desc: "Usuarios y Active Directory" }
+  soc:      { cidr: 10.10.20.0/24, gateway: 10.10.20.1, desc: "SIEM y herramientas de defensa" }
+  dmz:      { cidr: 10.10.30.0/24, gateway: 10.10.30.1, desc: "Servicios expuestos y apps vulnerables" }
+  attacker: { cidr: 10.10.99.0/24, gateway: 10.10.99.1, desc: "Máquina atacante" }
+
+services:
+  siem: 10.10.20.10
+  dc: 10.10.10.10
+
+machines:
+  router:
+    project: "0.1"
+    role: router
+    box: linux
+    memory: 768
+    cpus: 1
+    interfaces:
+      - { net: corp,     ip: 10.10.10.1 }
+      - { net: soc,      ip: 10.10.20.1 }
+      - { net: dmz,      ip: 10.10.30.1 }
+      - { net: attacker, ip: 10.10.99.1 }
+
+  soc-siem:
+    project: "0.1"      # En 0.3 se instala Wazuh y la memoria sube a 4096
+    role: linux
+    box: linux
+    memory: 1024
+    cpus: 2
+    interfaces:
+      - { net: soc, ip: 10.10.20.10 }
+
+  dmz-web:
+    project: "0.1"      # En 0.4 aloja las apps vulnerables en Docker
+    role: linux
+    box: linux
+    memory: 1024
+    cpus: 1
+    interfaces:
+      - { net: dmz, ip: 10.10.30.10 }
+
+  # --- Próximos proyectos (deshabilitados hasta implementarlos) ---
+  corp-dc:
+    project: "0.2"
+    enabled: false
+    role: windows-dc
+    memory: 2048
+    cpus: 2
+    interfaces:
+      - { net: corp, ip: 10.10.10.10 }
+
+  corp-ws01:
+    project: "0.2"
+    enabled: false
+    role: windows-client
+    memory: 3072
+    cpus: 2
+    interfaces:
+      - { net: corp, ip: 10.10.10.21 }
+
+  attacker-kali:
+    project: "0.4"
+    enabled: false
+    role: kali
+    memory: 2560
+    cpus: 2
+    interfaces:
+      - { net: attacker, ip: 10.10.99.10 }
+
+# Qué máquinas arrancan con `vagrant up` según LAB_PROFILE (por defecto: base).
+# Las máquinas deshabilitadas se ignoran. En una PC hogareña, no levantar blue y red juntos.
+profiles:
+  base: [router, soc-siem, dmz-web]                                   # ~2.8 GB
+  blue: [router, soc-siem, corp-dc, corp-ws01]                         # ~9.8 GB (con SIEM a 4 GB)
+  red:  [router, attacker-kali, corp-dc, corp-ws01, dmz-web]           # ~9.4 GB

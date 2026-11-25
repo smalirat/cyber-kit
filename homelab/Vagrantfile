@@ -1,0 +1,53 @@
+# -*- mode: ruby -*-
+# Homelab de ciberseguridad. Toda la configuración vive en lab.yml.
+#
+#   vagrant up                      -> levanta el perfil "base"
+#   $env:LAB_PROFILE="blue"; vagrant up
+#   vagrant up dmz-web              -> levanta una máquina puntual
+
+require "yaml"
+
+LAB = YAML.load_file(File.join(__dir__, "lab.yml"))
+PROFILE = ENV.fetch("LAB_PROFILE", "base")
+PROFILE_MACHINES = LAB["profiles"][PROFILE] or
+  abort "Perfil desconocido '#{PROFILE}'. Opciones: #{LAB['profiles'].keys.join(', ')}"
+
+Vagrant.configure("2") do |config|
+  config.vm.box_check_update = false
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  LAB["machines"].each do |name, m|
+    next unless m.fetch("enabled", true)
+
+    config.vm.define name, autostart: PROFILE_MACHINES.include?(name) do |node|
+      node.vm.box = LAB["boxes"].fetch(m["box"])
+      node.vm.hostname = name
+
+      m["interfaces"].each do |nic|
+        node.vm.network "private_network",
+          ip: nic["ip"], netmask: "255.255.255.0",
+          virtualbox__intnet: "#{LAB['name']}-#{nic['net']}"
+      end
+
+      node.vm.provider "virtualbox" do |vb|
+        vb.name = "#{LAB['name']}-#{name}"
+        vb.memory = m["memory"]
+        vb.cpus = m["cpus"]
+        vb.linked_clone = true
+        vb.customize ["modifyvm", :id, "--groups", "/#{LAB['name']}"]
+      end
+
+      case m["role"]
+      when "router"
+        args = m["interfaces"].map { |n| "#{n['net']}=#{n['ip']}" }
+        args << "siem=#{LAB['services']['siem']}" << "dc=#{LAB['services']['dc']}" << "domain=#{LAB['domain']}"
+        node.vm.provision "shell", name: "router", path: "provision/router.sh", args: args
+      when "linux"
+        nic = m["interfaces"].first
+        gateway = LAB["networks"][nic["net"]]["gateway"]
+        node.vm.provision "shell", name: "linux-client", path: "provision/linux-client.sh",
+          args: ["ip=#{nic['ip']}", "gw=#{gateway}", "domain=#{LAB['domain']}"]
+      end
+    end
+  end
+end
